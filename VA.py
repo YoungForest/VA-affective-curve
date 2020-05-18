@@ -12,7 +12,7 @@ def getAffectiveValue(name):
     return [rating[rating['name'] == name]['valenceValue'].values[0],
             rating[rating['name'] == name]['arousalValue'].values[0]]
 
-
+# get clips of each move from description file
 movies = {}
 for media in root.findall('media'):
     idd = media.find('id')
@@ -28,6 +28,7 @@ def getVaSequence(movie_name: str) -> list:
         ans.append(getAffectiveValue(clip))
     return ans
 
+# get VA curve from label file
 VAlines = {}
 for m in movies:
     VAlines[m] = getVaSequence(m)

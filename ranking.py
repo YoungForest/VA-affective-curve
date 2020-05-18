@@ -156,7 +156,7 @@ def trainProcess(model, modal='video'):
         evalProcess(model)
 
 
-def evalProcess(model):
+def evalProcess(model, medal='video'):
     criterion = torch.nn.MSELoss()
     arousal_loss_test = 0.0
     valence_loss_test = 0.0
@@ -164,7 +164,7 @@ def evalProcess(model):
     for i, data in enumerate(test_dataloader, 0):
         try:
             # get the inputs
-            inputs = data['video']
+            video_inputs = data[modal].to(device)
             valence = data['label'][:, 0:1]
             arousal = data['label'][:, 1:2]
             ground_truth = data['label']
@@ -193,5 +193,10 @@ def evalProcess(model):
 
 time1 = time.time()
 trainProcess(audio_model, modal='audio')
+torch.save(audio_model.state_dict(), 'audio_model.model')
 time2 = time.time()
 print(f'audio train: {time2 - time1}s')
+time3 = time.time()
+evalProcess(audio_model)
+print(f'audio eval: {time3 - time2}s')
+
