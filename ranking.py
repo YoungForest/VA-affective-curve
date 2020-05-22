@@ -43,12 +43,12 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
         elif settype == 'test':
             set_id = 0
         else:
-            assert(false)
+            assert(False)
         self.videos_name = sets_df[sets_df['set'] == set_id]['name']
         self.data_path = '/root/yangsen-data/LIRIS-ACCEDE-data/data/'
         label_file = '/root/yangsen-data/LIRIS-ACCEDE-annotations/LIRIS-ACCEDE-annotations/annotations/ACCEDEranking.txt'
         self.label_df = pd.read_csv(label_file, sep='\t')
-        self.mfcc_transformer = torchaudio.transforms.MFCC()
+        self.mfcc_transformer = torchaudio.transforms.MFCC().to(device)
 
     def __len__(self):
         return len(self.videos_name)
@@ -69,8 +69,9 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         name = self.videos_name.iloc[idx]
         data = torchvision.io.read_video(self.data_path + name)
+        # audio
         sample_rate = data[2]['audio_fps']
-        audio = data[1]
+        audio = data[1].to(device)
         downsample_rate = 2000
         downsample_resample = torchaudio.transforms.Resample(
             sample_rate, downsample_rate, resampling_method='sinc_interpolation')
@@ -86,7 +87,8 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
             frames = last_frame.repeat(
                 1, self.max_audio_length - audio.shape[1])
             audio = torch.cat([audio, frames], 1)
-        transformed_video = transform_video(data[0])
+        # vedio
+        transformed_video = transform_video(data[0]).to(device)
         if transformed_video.shape[1] > self.max_length:
             transformed_video = transformed_video[:, :self.max_length, :, :]
         elif self.max_length > transformed_video.shape[1]:
@@ -99,7 +101,7 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
         return {'name': name,
                 'video': transformed_video,
                 'audio': self.mfcc_transformer(audio),
-                'label': self.getAffective(name, column='Rank')
+                'label': self.getAffective(name, column='Value')
                 }
 
 
@@ -108,7 +110,7 @@ trainset = LIRIS_ACCEDE(settype='train')
 test_data_set = LIRIS_ACCEDE(settype='test')
 validateset = LIRIS_ACCEDE(settype='validation')
 train_data_set = torch.utils.data.ConcatDataset([trainset, validateset])
-batch_size = 8
+batch_size = 32
 train_dataloader = torch.utils.data.DataLoader(
     train_data_set, batch_size=batch_size)
 test_dataloader = torch.utils.data.DataLoader(
@@ -119,65 +121,60 @@ num_ftrs = video_model.fc.in_features
 video_model.fc = torch.nn.Linear(num_ftrs, 2)
 video_model = video_model.to(device)
 # audio_model
-audio_model = torchvision.models.resnet152(pretrained=True)
+audio_model = torchvision.models.resnet18(pretrained=True)
 num_ftrs = audio_model.fc.in_features
 audio_model.fc = torch.nn.Linear(num_ftrs, 2)
 audio_model.conv1 = torch.nn.Conv2d(2, 64, (2, 10))
 audio_model = audio_model.to(device)
 
+fusion_fc = torch.nn.Linear(64*2, 2)
+
+print(f'train_dataloader length: {len(train_dataloader)}')
+
 
 def trainProcess(model, modal='video'):
-    criterion = torch.nn.MSELoss()
+    criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     for epoch in range(20):
         running_loss = 0.0
         for i, data in enumerate(train_dataloader, 0):
-            try:
-                video_inputs = data[modal].to(device)
-                labels = torch.tensor(data['label']).float().to(device)
+            video_inputs = data[modal]
+            labels = data['label'].clone().detach().float().to(device)
+            optimizer.zero_grad()
 
-                optimizer.zero_grad()
+            outputs = model(video_inputs)
+#             print(outputs.shape, labels.shape)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
-                outputs = model(video_inputs)
-    #             print(outputs.shape, labels.shape)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
+            # print statistics
+            running_loss += loss.item()
+            if i % 5 == 4:
+                print('[%d. %5d] loss: %.3f' %
+                        (epoch + 1, i + 1, running_loss / 5))
+                running_loss = 0.0
 
-                # print statistics
-                running_loss += loss.item()
-                if i % 5 == 4:
-                    print('[%d. %5d] loss: %.3f' %
-                          (epoch + 1, i + 1, running_loss / 5))
-                    running_loss = 0.0
-            except Exception as e:
-                traceback.print_exc()
-
-        evalProcess(model)
+        evalProcess(model, modal=modal)
 
 
-def evalProcess(model, medal='video'):
-    criterion = torch.nn.MSELoss()
+def evalProcess(model, modal='video'):
+    criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     arousal_loss_test = 0.0
     valence_loss_test = 0.0
     mse_list = []
     for i, data in enumerate(test_dataloader, 0):
-        try:
-            # get the inputs
-            video_inputs = data[modal].to(device)
-            valence = data['label'][:, 0:1]
-            arousal = data['label'][:, 1:2]
-            ground_truth = data['label']
-            inputs, valence, arousal, ground_truth = inputs.to(device), valence.to(
-                device), arousal.to(device), ground_truth.to(device)
-            with torch.set_grad_enabled(False):
-                outputs = model(inputs)
-                valence_loss = criterion(outputs[:, 0:1], valence)
-                arousal_loss = criterion(outputs[:, 1:2], arousal)
-                arousal_loss_test += arousal_loss.item()
-                valence_loss_test += valence_loss.item()
-        except Exception as e:
-            traceback.print_exc()
+        # get the inputs
+        inputs = data[modal]
+        valence = data['label'][:, 0:1].to(device)
+        arousal = data['label'][:, 1:2].to(device)
+        ground_truth = data['label']
+        with torch.no_grad():
+            outputs = model(inputs)
+            valence_loss = criterion(outputs[:, 0:1], valence)
+            arousal_loss = criterion(outputs[:, 1:2], arousal)
+            arousal_loss_test += arousal_loss.item()
+            valence_loss_test += valence_loss.item()
 
     print(f'arousal mse average: {arousal_loss_test / len(test_dataloader)}')
     print(f'valence mse average: {valence_loss_test / len(test_dataloader)}')
@@ -196,7 +193,4 @@ trainProcess(audio_model, modal='audio')
 torch.save(audio_model.state_dict(), 'audio_model.model')
 time2 = time.time()
 print(f'audio train: {time2 - time1}s')
-time3 = time.time()
-evalProcess(audio_model)
-print(f'audio eval: {time3 - time2}s')
 
