@@ -116,7 +116,7 @@ train_dataloader = torch.utils.data.DataLoader(
 test_dataloader = torch.utils.data.DataLoader(
     test_data_set, batch_size=batch_size)
 # video_model
-video_model = torchvision.models.video.r3d_18(pretrained=False, progress=True)
+video_model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
 num_ftrs = video_model.fc.in_features
 video_model.fc = torch.nn.Linear(num_ftrs, 2)
 video_model = video_model.to(device)
@@ -127,7 +127,23 @@ audio_model.fc = torch.nn.Linear(num_ftrs, 2)
 audio_model.conv1 = torch.nn.Conv2d(2, 64, (2, 10))
 audio_model = audio_model.to(device)
 
-fusion_fc = torch.nn.Linear(64*2, 2)
+class FusionNetwork(torch.nn.Module):
+    def __init__(self):
+        super(FusionNetwork, self).__init__()
+        video_model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
+        num_ftrs = video_model.fc.in_features
+        video_model.fc = torch.nn.Linear(num_ftrs, 128)
+        self.video = video_model
+        audio_model = torchvision.models.resnet18(pretrained=True)
+        num_ftrs = audio_model.fc.in_features
+        audio_model.fc = torch.nn.Linear(num_ftrs, 128)
+        audio_model.conv1 = torch.nn.Conv2d(2, 64, (2, 10))
+        self.audio = audio_model
+        self.fusion_fc = torch.nn.Linear(128*2, 2)
+    def forward(self, x):
+        self.video_feature = self.video(x['video'])
+        self.audio_feature = self.audio(x['audio'])
+        return self.fusion_fc(torch.cat([self.video_feature, self.audio_feature], dim=1))
 
 print(f'train_dataloader length: {len(train_dataloader)}')
 
@@ -135,14 +151,13 @@ print(f'train_dataloader length: {len(train_dataloader)}')
 def trainProcess(model, modal='video'):
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-    for epoch in range(20):
+    for epoch in range(3):
         running_loss = 0.0
         for i, data in enumerate(train_dataloader, 0):
-            video_inputs = data[modal]
             labels = data['label'].clone().detach().float().to(device)
             optimizer.zero_grad()
 
-            outputs = model(video_inputs)
+            outputs = model(data)
 #             print(outputs.shape, labels.shape)
             loss = criterion(outputs, labels)
             loss.backward()
@@ -165,12 +180,11 @@ def evalProcess(model, modal='video'):
     mse_list = []
     for i, data in enumerate(test_dataloader, 0):
         # get the inputs
-        inputs = data[modal]
         valence = data['label'][:, 0:1].to(device)
         arousal = data['label'][:, 1:2].to(device)
         ground_truth = data['label']
         with torch.no_grad():
-            outputs = model(inputs)
+            outputs = model(data)
             valence_loss = criterion(outputs[:, 0:1], valence)
             arousal_loss = criterion(outputs[:, 1:2], arousal)
             arousal_loss_test += arousal_loss.item()
@@ -188,9 +202,15 @@ def evalProcess(model, modal='video'):
 # print (f'video train: {t2 - t1}')
 
 
-time1 = time.time()
-trainProcess(audio_model, modal='audio')
-torch.save(audio_model.state_dict(), 'audio_model.model')
-time2 = time.time()
-print(f'audio train: {time2 - time1}s')
+# time1 = time.time()
+# trainProcess(audio_model, modal='audio')
+# torch.save(audio_model.state_dict(), 'audio_model.model')
+# time2 = time.time()
+# print(f'audio train: {time2 - time1}s')
 
+fusion_model = FusionNetwork().to(device)
+time1 = time.time()
+trainProcess(fusion_model, modal='fusion')
+torch.save(fusion_model.state_dict(), 'fusion_model.model')
+time2 = time.time()
+print(f'fusion train: {time2 - time1}s')
