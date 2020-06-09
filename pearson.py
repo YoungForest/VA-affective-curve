@@ -7,16 +7,27 @@ import os
 def drawCorrelation(names, values, correlation_name):
     import matplotlib.pyplot as plt
     import matplotlib
+    import random
 
     matplotlib.rcParams['axes.unicode_minus'] = False
+    name_value_pair = list(zip(names, values))
+    def cmp(x):
+        return -x[1]
+    name_value_pair.sort(key=cmp)
+    name_value_pair = name_value_pair[:20]
+    random.shuffle(name_value_pair)
+    names, values = zip(*name_value_pair)
     n = len(names)
     plt.barh(range(n), values, height=0.7,
              color='steelblue', alpha=0.8)      # 从下往上画
     plt.yticks(range(n), names)
-    plt.xlim(-1, 1)
+    plt.xlim(-0.5, 0.5)
     plt.xlabel(correlation_name)
     plt.title(correlation_name)
+    # plt.setp(plt.yticks()[1], rotation=30, horizontalalignment='right')
+    plt.tight_layout()
     plt.savefig(correlation_name+'.png')
+    print (correlation_name, statistics.mean(values))
 
 
 fpsMovie = [['Attitude_Matters', 'Attitude Matters'],
@@ -75,6 +86,8 @@ with open('predictVA.json', 'r') as f:
         phy = getPhysiological(i[1])
         phyArousal = multi(phy['arousal'], 5)
         phyValence = multi(phy['valence'], 5)
+        # modelArousal = [i * -500 for i in multi(model[1], 8)]
+        # modelValence = [i * -500 for i in multi(model[0], 8)]
         modelArousal = multi(model[1], 8)
         modelValence = multi(model[0], 8)
         minArousal = min(len(phyArousal), len(modelArousal))
@@ -112,19 +125,23 @@ with open('predictVA.json', 'r') as f:
         pointbiserialrValence.append(v[2][1][0])
         kendalltauAroual.append(v[3][0][0])
         kendalltauValence.append(v[3][1][0])
-    print(pearsonrAroual, statistics.mean(pearsonrAroual))
+    print('Pearson: ')
+    print(statistics.mean(pearsonrAroual))
     drawCorrelation(names, pearsonrAroual, 'pearsonrAroual')
-    print(pearsonrValence, statistics.mean(pearsonrValence))
+    print(statistics.mean(pearsonrValence))
     drawCorrelation(names, pearsonrValence, 'pearsonrValence')
-    print(spearmanrAroual, statistics.mean(spearmanrAroual))
+    print('spearmanr: ')
+    print(statistics.mean(spearmanrAroual))
     drawCorrelation(names, spearmanrAroual, 'spearmanrAroual')
-    print(spearmanrValence, statistics.mean(spearmanrValence))
+    print(statistics.mean(spearmanrValence))
     drawCorrelation(names, spearmanrValence, 'spearmanrValence')
-    print(pointbiserialrAroual, statistics.mean(pointbiserialrAroual))
+    print('pointbiserialr: ')
+    print(statistics.mean(pointbiserialrAroual))
     drawCorrelation(names, pointbiserialrAroual, 'pointbiserialrAroual')
-    print(pointbiserialrValence, statistics.mean(pointbiserialrValence))
+    print(statistics.mean(pointbiserialrValence))
     drawCorrelation(names, pointbiserialrValence, 'pointbiserialrValence')
-    print(kendalltauAroual, statistics.mean(kendalltauAroual))
+    print('kendalltau: ')
+    print(statistics.mean(kendalltauAroual))
     drawCorrelation(names, kendalltauAroual, 'kendalltauAroual')
-    print(kendalltauValence, statistics.mean(kendalltauValence))
+    print(statistics.mean(kendalltauValence))
     drawCorrelation(names, kendalltauValence, 'kendalltauValence')

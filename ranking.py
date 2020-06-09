@@ -31,7 +31,7 @@ def normalize(tensor):
 class LIRIS_ACCEDE(torch.utils.data.Dataset):
     def __init__(self, settype: str):
         super(LIRIS_ACCEDE).__init__()
-        self.max_length = 200
+        self.max_length = 50
         self.max_audio_length = 400000
         annotation_directory_path = '/root/yangsen-data/LIRIS-ACCEDE-annotations/LIRIS-ACCEDE-annotations/annotations/'
         sets_file_path = annotation_directory_path + 'ACCEDEsets.txt'
@@ -88,7 +88,7 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
                 1, self.max_audio_length - audio.shape[1])
             audio = torch.cat([audio, frames], 1)
         # vedio
-        transformed_video = transform_video(data[0]).to(device)
+        transformed_video = transform_video(data[0][::4]).to(device)
         if transformed_video.shape[1] > self.max_length:
             transformed_video = transformed_video[:, :self.max_length, :, :]
         elif self.max_length > transformed_video.shape[1]:
@@ -97,7 +97,7 @@ class LIRIS_ACCEDE(torch.utils.data.Dataset):
                 1, self.max_length-transformed_video.shape[1], 1, 1)
             transformed_video = torch.cat([transformed_video, frames], 1)
 #         print(transformed_video.shape)
-
+        del data
         return {'name': name,
                 'video': transformed_video,
                 'audio': self.mfcc_transformer(audio),
@@ -110,7 +110,7 @@ trainset = LIRIS_ACCEDE(settype='train')
 test_data_set = LIRIS_ACCEDE(settype='test')
 validateset = LIRIS_ACCEDE(settype='validation')
 train_data_set = torch.utils.data.ConcatDataset([trainset, validateset])
-batch_size = 32
+batch_size = 8
 train_dataloader = torch.utils.data.DataLoader(
     train_data_set, batch_size=batch_size)
 test_dataloader = torch.utils.data.DataLoader(
@@ -149,6 +149,7 @@ print(f'train_dataloader length: {len(train_dataloader)}')
 
 
 def trainProcess(model, modal='video'):
+    model.train()
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     for epoch in range(3):
@@ -157,7 +158,10 @@ def trainProcess(model, modal='video'):
             labels = data['label'].clone().detach().float().to(device)
             optimizer.zero_grad()
 
-            outputs = model(data)
+            if modal == 'fusion':
+                outputs = model(data)
+            else:
+                outputs = model(data[modal])
 #             print(outputs.shape, labels.shape)
             loss = criterion(outputs, labels)
             loss.backward()
@@ -174,6 +178,7 @@ def trainProcess(model, modal='video'):
 
 
 def evalProcess(model, modal='video'):
+    model.eval()
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     arousal_loss_test = 0.0
     valence_loss_test = 0.0
@@ -184,7 +189,10 @@ def evalProcess(model, modal='video'):
         arousal = data['label'][:, 1:2].to(device)
         ground_truth = data['label']
         with torch.no_grad():
-            outputs = model(data)
+            if modal == 'fusion':
+                outputs = model(data)
+            else:
+                outputs = model(data[modal])
             valence_loss = criterion(outputs[:, 0:1], valence)
             arousal_loss = criterion(outputs[:, 1:2], arousal)
             arousal_loss_test += arousal_loss.item()
@@ -195,22 +203,30 @@ def evalProcess(model, modal='video'):
     mse_list.append((arousal_loss_test / len(test_dataloader),
                      valence_loss_test / len(test_dataloader)))
 
-# import time
-# t1 = time.time()
-# trainProcess(video_model, 'video')
-# t2 = time.time()
-# print (f'video train: {t2 - t1}')
+import time
+import sys
 
-
-# time1 = time.time()
-# trainProcess(audio_model, modal='audio')
-# torch.save(audio_model.state_dict(), 'audio_model.model')
-# time2 = time.time()
-# print(f'audio train: {time2 - time1}s')
-
-fusion_model = FusionNetwork().to(device)
-time1 = time.time()
-trainProcess(fusion_model, modal='fusion')
-torch.save(fusion_model.state_dict(), 'fusion_model.model')
-time2 = time.time()
-print(f'fusion train: {time2 - time1}s')
+if __name__ == '__main__':
+    assert(len(sys.argv) >= 2)
+    mode = sys.argv[1]
+    if mode == 'video':
+        t1 = time.time()
+        trainProcess(video_model, 'video')
+        torch.save(video_model.state_dict(), 'video_model.model')
+        t2 = time.time()
+        print (f'video train: {t2 - t1}')
+    elif mode == 'audio':
+        time1 = time.time()
+        trainProcess(audio_model, modal='audio')
+        torch.save(audio_model.state_dict(), 'audio_model.model')
+        time2 = time.time()
+        print(f'audio train: {time2 - time1}s')
+    elif mode == 'fusion':
+        fusion_model = FusionNetwork().to(device)
+        time1 = time.time()
+        trainProcess(fusion_model, modal='fusion')
+        torch.save(fusion_model.state_dict(), 'fusion_model.model')
+        time2 = time.time()
+        print(f'fusion train: {time2 - time1}s')
+    else:
+        assert(False)
