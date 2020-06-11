@@ -23,5 +23,6 @@ if __name__ == '__main__':
     for asset in ['audio', 'video']:
         df.append(mergeFeatures(asset))
     total = df[0].merge(df[1], on='id')
+    total['name'] = total['id'] + '.mp4'
     total.to_csv('liris_features.csv', index=False)
     print(total.shape)
