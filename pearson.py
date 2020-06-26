@@ -106,42 +106,42 @@ with open('predictVA.json', 'r') as f:
                                   [stats.pointbiserialr(phyArousal, modelArousal),
                                    stats.pointbiserialr(phyValence, modelValence)],
                                   [stats.kendalltau(phyArousal, modelArousal), stats.kendalltau(phyValence, modelValence)]]
-    pearsonrAroual = []
+    pearsonrArousal = []
     pearsonrValence = []
-    spearmanrAroual = []
+    spearmanrArousal = []
     spearmanrValence = []
-    pointbiserialrAroual = []
+    pointbiserialrArousal = []
     pointbiserialrValence = []
-    kendalltauAroual = []
+    kendalltauArousal = []
     kendalltauValence = []
     names = []
     for i, v in correlation.items():
         names.append(i)
-        pearsonrAroual.append(v[0][0][0])
+        pearsonrArousal.append(v[0][0][0])
         pearsonrValence.append(v[0][1][0])
-        spearmanrAroual.append(v[1][0][0])
+        spearmanrArousal.append(v[1][0][0])
         spearmanrValence.append(v[1][1][0])
-        pointbiserialrAroual.append(v[2][0][0])
+        pointbiserialrArousal.append(v[2][0][0])
         pointbiserialrValence.append(v[2][1][0])
-        kendalltauAroual.append(v[3][0][0])
+        kendalltauArousal.append(v[3][0][0])
         kendalltauValence.append(v[3][1][0])
     print('Pearson: ')
-    print(statistics.mean(pearsonrAroual))
-    drawCorrelation(names, pearsonrAroual, 'pearsonrAroual')
+    print(statistics.mean(pearsonrArousal))
+    drawCorrelation(names, pearsonrArousal, 'pearsonrArousal')
     print(statistics.mean(pearsonrValence))
     drawCorrelation(names, pearsonrValence, 'pearsonrValence')
     print('spearmanr: ')
-    print(statistics.mean(spearmanrAroual))
-    drawCorrelation(names, spearmanrAroual, 'spearmanrAroual')
+    print(statistics.mean(spearmanrArousal))
+    drawCorrelation(names, spearmanrArousal, 'spearmanrArousal')
     print(statistics.mean(spearmanrValence))
     drawCorrelation(names, spearmanrValence, 'spearmanrValence')
     print('pointbiserialr: ')
-    print(statistics.mean(pointbiserialrAroual))
-    drawCorrelation(names, pointbiserialrAroual, 'pointbiserialrAroual')
+    print(statistics.mean(pointbiserialrArousal))
+    drawCorrelation(names, pointbiserialrArousal, 'pointbiserialrArousal')
     print(statistics.mean(pointbiserialrValence))
     drawCorrelation(names, pointbiserialrValence, 'pointbiserialrValence')
     print('kendalltau: ')
-    print(statistics.mean(kendalltauAroual))
-    drawCorrelation(names, kendalltauAroual, 'kendalltauAroual')
+    print(statistics.mean(kendalltauArousal))
+    drawCorrelation(names, kendalltauArousal, 'kendalltauArousal')
     print(statistics.mean(kendalltauValence))
     drawCorrelation(names, kendalltauValence, 'kendalltauValence')

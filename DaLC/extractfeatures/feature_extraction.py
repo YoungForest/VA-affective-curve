@@ -57,9 +57,12 @@ if __name__ == '__main__':
     #dir_path = FLAGS.dir
     #expansion = FLAGS.expansion
 
+    # 当视频数比较多时，使用多进程并行提取特征。1225个需要大概15h.
+    process_number = 32
     dir_path = '/root/yangsen-data/LIRIS-ACCEDE-data/data'
     expansion = 'mp4'
     i = int(sys.argv[1])
+    assert(i >= 0 and i < process_number)
     #print("unparse options: ", unparsed)
 
     # timer
@@ -67,7 +70,7 @@ if __name__ == '__main__':
 
     videos = glob.glob(dir_path + "/*." + expansion)
     videos_length = len(videos)
-    part_length = len(videos) // 8
+    part_length = len(videos) // process_number
     videos = videos[i * part_length:min((i+1)*part_length, videos_length)]
     print(len(videos))
 
@@ -92,3 +95,5 @@ if __name__ == '__main__':
     print("features extracted over")
     end = time.time()
     print('Task runs %0.2f seconds.' % (end-start))
+    print(f'task length: {len(videos)}')
+    print(f'cost per clip: {(end - start) / len(videos)}')

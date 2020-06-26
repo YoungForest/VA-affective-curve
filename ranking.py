@@ -6,6 +6,7 @@ import transform as T
 import numpy as np
 import torchvision
 import torch
+from tensorboardX import SummaryWriter
 print(torch.__version__)
 print(torchvision.__version__)
 
@@ -20,7 +21,8 @@ transform_video = torchvision.transforms.Compose([
 ])
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(torchaudio.__version__)
-
+trainIter = 0
+evalIter = 0
 
 def normalize(tensor):
     # Subtract the mean, and scale to the interval [-1,1]
@@ -110,7 +112,7 @@ trainset = LIRIS_ACCEDE(settype='train')
 test_data_set = LIRIS_ACCEDE(settype='test')
 validateset = LIRIS_ACCEDE(settype='validation')
 train_data_set = torch.utils.data.ConcatDataset([trainset, validateset])
-batch_size = 8
+batch_size = 16
 train_dataloader = torch.utils.data.DataLoader(
     train_data_set, batch_size=batch_size)
 test_dataloader = torch.utils.data.DataLoader(
@@ -149,10 +151,11 @@ print(f'train_dataloader length: {len(train_dataloader)}')
 
 
 def trainProcess(model, modal='video'):
+    global trainIter
     model.train()
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-    for epoch in range(3):
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
+    for epoch in range(50):
         running_loss = 0.0
         for i, data in enumerate(train_dataloader, 0):
             labels = data['label'].clone().detach().float().to(device)
@@ -172,12 +175,15 @@ def trainProcess(model, modal='video'):
             if i % 5 == 4:
                 print('[%d. %5d] loss: %.3f' %
                         (epoch + 1, i + 1, running_loss / 5))
+                writer.add_scalar(f'data/train-{mode}', running_loss / 5, trainIter)
+                trainIter += 1
                 running_loss = 0.0
 
         evalProcess(model, modal=modal)
 
 
 def evalProcess(model, modal='video'):
+    global evalIter
     model.eval()
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     arousal_loss_test = 0.0
@@ -200,6 +206,9 @@ def evalProcess(model, modal='video'):
 
     print(f'arousal mse average: {arousal_loss_test / len(test_dataloader)}')
     print(f'valence mse average: {valence_loss_test / len(test_dataloader)}')
+    writer.add_scalar(f'data/testArousal-{mode}', arousal_loss_test / len(test_dataloader), evalIter)
+    writer.add_scalar(f'data/testValence-{mode}', valence_loss_test / len(test_dataloader), evalIter)
+    evalIter += 1
     mse_list.append((arousal_loss_test / len(test_dataloader),
                      valence_loss_test / len(test_dataloader)))
 
@@ -209,8 +218,11 @@ import sys
 if __name__ == '__main__':
     assert(len(sys.argv) >= 2)
     mode = sys.argv[1]
+    writer = SummaryWriter()
     if mode == 'video':
         t1 = time.time()
+        # video_model.load_state_dict(torch.load('video_model.model'))
+        # video_model.eval()
         trainProcess(video_model, 'video')
         torch.save(video_model.state_dict(), 'video_model.model')
         t2 = time.time()
@@ -230,3 +242,6 @@ if __name__ == '__main__':
         print(f'fusion train: {time2 - time1}s')
     else:
         assert(False)
+    # export scalar data to JSON for external processing
+    writer.export_scalars_to_json(f'./{mode}_scalars.json')
+    writer.close()
