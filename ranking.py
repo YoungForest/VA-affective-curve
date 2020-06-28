@@ -117,17 +117,6 @@ train_dataloader = torch.utils.data.DataLoader(
     train_data_set, batch_size=batch_size)
 test_dataloader = torch.utils.data.DataLoader(
     test_data_set, batch_size=batch_size)
-# video_model
-video_model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
-num_ftrs = video_model.fc.in_features
-video_model.fc = torch.nn.Linear(num_ftrs, 2)
-video_model = video_model.to(device)
-# audio_model
-audio_model = torchvision.models.resnet18(pretrained=True)
-num_ftrs = audio_model.fc.in_features
-audio_model.fc = torch.nn.Linear(num_ftrs, 2)
-audio_model.conv1 = torch.nn.Conv2d(2, 64, (2, 10))
-audio_model = audio_model.to(device)
 
 class FusionNetwork(torch.nn.Module):
     def __init__(self):
@@ -155,7 +144,7 @@ def trainProcess(model, modal='video'):
     model.train()
     criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
-    for epoch in range(50):
+    for epoch in range(20):
         running_loss = 0.0
         for i, data in enumerate(train_dataloader, 0):
             labels = data['label'].clone().detach().float().to(device)
@@ -179,7 +168,11 @@ def trainProcess(model, modal='video'):
                 trainIter += 1
                 running_loss = 0.0
 
+        torch.save(model.state_dict(), f'{model}_model-{epoch}.model')
+        t1 = time.time()
         evalProcess(model, modal=modal)
+        t2 = time.time()
+        print (f'eval process: {t2 - t1} s')
 
 
 def evalProcess(model, modal='video'):
@@ -220,28 +213,41 @@ if __name__ == '__main__':
     mode = sys.argv[1]
     writer = SummaryWriter()
     if mode == 'video':
+        # video_model
+        video_model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
+        num_ftrs = video_model.fc.in_features
+        video_model.fc = torch.nn.Linear(num_ftrs, 2)
+        video_model = video_model.to(device)
         t1 = time.time()
-        # video_model.load_state_dict(torch.load('video_model.model'))
-        # video_model.eval()
-        trainProcess(video_model, 'video')
-        torch.save(video_model.state_dict(), 'video_model.model')
-        t2 = time.time()
-        print (f'video train: {t2 - t1}')
+        model = video_model
+        
     elif mode == 'audio':
-        time1 = time.time()
-        trainProcess(audio_model, modal='audio')
-        torch.save(audio_model.state_dict(), 'audio_model.model')
-        time2 = time.time()
-        print(f'audio train: {time2 - time1}s')
+        # audio_model
+        audio_model = torchvision.models.resnet18(pretrained=True)
+        num_ftrs = audio_model.fc.in_features
+        audio_model.fc = torch.nn.Linear(num_ftrs, 2)
+        audio_model.conv1 = torch.nn.Conv2d(2, 64, (2, 10))
+        audio_model = audio_model.to(device)
+        model = audio_model
     elif mode == 'fusion':
         fusion_model = FusionNetwork().to(device)
-        time1 = time.time()
-        trainProcess(fusion_model, modal='fusion')
-        torch.save(fusion_model.state_dict(), 'fusion_model.model')
-        time2 = time.time()
-        print(f'fusion train: {time2 - time1}s')
+        model = fusion_model
     else:
         assert(False)
+    
+    model.load_state_dict(torch.load(f'{mode}_model.model'))
+    model.eval()
+    # train
+    time1 = time.time()
+    trainProcess(model, mode)
+    torch.save(video_model.state_dict(), f'{mode}_model.model')
+    time2 = time.time()
+    print (f'{mode} train: {time2 - time1}')
+    # eval
+    # t1 = time.time()
+    # evalProcess(model, modal=mode)
+    # t2 = time.time()
+    # print (f'{mode} eval process: {t2 - t1} s')
     # export scalar data to JSON for external processing
     writer.export_scalars_to_json(f'./{mode}_scalars.json')
     writer.close()
